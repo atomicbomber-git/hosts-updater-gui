@@ -13,6 +13,7 @@ module.exports = {
   },
   rules: {
     'no-empty-interface': 0,
+    '@typescript-eslint/no-var-requires': 0,
     'no-console': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
     'no-debugger': process.env.NODE_ENV === 'production' ? 'warn' : 'off'
   }
