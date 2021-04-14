@@ -1,8 +1,8 @@
 <script lang="tsx">
 import {debounce} from "lodash"
-import { ipcRenderer, remote } from "electron"
+import {ipcRenderer, remote} from "electron"
 import {Modal} from "bootstrap"
-import {computed, defineComponent, onMounted, reactive, ref} from "vue"
+import {computed, defineComponent, onMounted, watch, reactive, ref} from "vue"
 import readline from "readline"
 import fs from "fs"
 import StringSimilarity from "string-similarity"
@@ -37,11 +37,11 @@ const getNextId: () => number = (function () {
     return () => internalCounter++
 })()
 
-function stringToLineModel(line: string, getNextNumber: () =>  number): LineModel {
+function stringToLineModel(line: string, getNextNumber: () => number): LineModel {
     line = line.trim()
     
     if (line.startsWith(`#`) || (line.length === 0)) {
-        return { id: getNextNumber(), isDeleted: false,  value: line } as Plain
+        return {id: getNextNumber(), isDeleted: false, value: line} as Plain
     }
     
     const lineParts = line.split(/ +/ui)
@@ -89,7 +89,7 @@ interface ApiResponse {
 function fetchLineModels(): Promise<LineModel[]> {
     return new Promise<LineModel[]>(resolve => {
         const lineModels: LineModel[] = []
-    
+        
         readline.createInterface({
             input: fs.createReadStream(`/etc/hosts`)
         }).on(`line`, lineString => {
@@ -135,7 +135,18 @@ export default defineComponent({
         )
         
         const modalRef = ref<HTMLDivElement>()
+        const createModalRef = ref<HTMLDivElement>()
+        
+        
         let modal: Modal | null = null
+        let createModal: Modal | null = null
+        
+        
+        watch(createModalRef, () => {
+            if (createModalRef.value !== undefined) {
+                createModal = new Modal(createModalRef.value)
+            }
+        })
         
         onMounted(() => {
             if (typeof modalRef.value !== "undefined") {
@@ -146,7 +157,7 @@ export default defineComponent({
         const onDeleteEntryButtonClick = (entry: Entry) => {
             entry.isDeleted = true
         }
-    
+        
         const onRestoreEntryButtonClick = (entry: Entry) => {
             entry.isDeleted = false
         }
@@ -156,15 +167,16 @@ export default defineComponent({
             lineModels,
             sortedLineModels: sortedEntries,
             modalRef,
+            createModalRef,
             
-            onRenewEntryButtonClick (entry: Entry) {
+            onRenewEntryButtonClick(entry: Entry) {
                 Promise.all(entry.domains.map(async (domain: string) => {
                     return await axios.get<ApiResponse>(`https://addr-scraper.jamespatrickkeegan.com/?domain=${domain}`)
                 })).then(responses => {
-                     if (responses.length > 0) {
-                         let firstResponse = responses[0].data
-                         entry.ipAddress = firstResponse.ip_addresses[0]
-                     }
+                    if (responses.length > 0) {
+                        let firstResponse = responses[0].data
+                        entry.ipAddress = firstResponse.ip_addresses[0]
+                    }
                 }).catch(error => {
                     console.log(error)
                     alert("Failed to contact server.")
@@ -174,17 +186,37 @@ export default defineComponent({
             renderDeleteOrRestoreButton(entry: Entry) {
                 if (entry.isDeleted) {
                     return (
-                        <button onClick={() => { onRestoreEntryButtonClick(entry) }} class="btn btn-success btn-sm">
+                        <button onClick={() => {
+                            onRestoreEntryButtonClick(entry)
+                        }}
+                                class="btn btn-success btn-sm"
+                        >
                             Restore
                         </button>
                     )
                 } else {
                     return (
-                        <button onClick={() => { onDeleteEntryButtonClick(entry) }} class="btn btn-danger btn-sm">
+                        <button onClick={() => {
+                            onDeleteEntryButtonClick(entry)
+                        }}
+                                class="btn btn-danger btn-sm"
+                        >
                             Delete
                         </button>
                     )
                 }
+            },
+    
+            onCreateNewEntryButtonClick() {
+                createModal?.toggle()
+            },
+            
+            onResetButtonClick() {
+                lineModels = []
+                
+                fetchLineModels().then(obtainedLineModels => {
+                    lineModels.push(...obtainedLineModels)
+                })
             },
             
             onPreviewButtonClick() {
@@ -200,6 +232,40 @@ export default defineComponent({
     render() {
         return (
             <article>
+                <div class="modal"
+                     tabindex="-1"
+                     ref="createModalRef"
+                >
+                    <div class="modal-dialog modal-xl">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title"> Create New Entries </h5>
+                                <button type="button"
+                                        class="btn-close"
+                                        data-bs-dismiss="modal"
+                                        aria-label="Close"
+                                />
+                            </div>
+                
+                            <div class="modal-body">
+                            </div>
+                
+                            <div class="modal-footer">
+                                <button type="button"
+                                        class="btn btn-secondary"
+                                        data-bs-dismiss="modal"
+                                >Close
+                                </button>
+                                <button type="button"
+                                        class="btn btn-primary"
+                                >Save changes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                
                 <div class="modal"
                      tabindex="-1"
                      ref="modalRef"
@@ -247,15 +313,30 @@ export default defineComponent({
                                 <input
                                     value={this.searchString}
                                     onInput={this.onSearchStringInput}
-                                    class="form-control"
+                                    class="form-control flex-fill"
                                     placeholder="Search"
                                     type="text"
                                 />
                                 
                                 <button
+                                    onClick={this.onCreateNewEntryButtonClick}
+                                    class="btn btn-info btn-sm ms-2 text-nowrap">
+                                    Create New Entry
+                                    <i class="bi-plus"/>
+                                </button>
+                                
+                                <button
+                                    onClick={this.onResetButtonClick}
+                                    class="btn btn-warning btn-sm ms-2 flex-fill text-nowrap">
+                                    Reset
+                                    <i class="bi-arrow-clockwise"/>
+                                </button>
+                                
+                                <button
                                     onClick={this.onPreviewButtonClick}
-                                    class="btn btn-primary ms-3"
+                                    class="btn btn-primary ms-2 flex-fill text-nowrap"
                                 >
+                                    <i class="bi-view-list"/>
                                     Preview
                                 </button>
                             </div>
@@ -281,7 +362,11 @@ export default defineComponent({
                                             </div>
                                         </div>
                                         <div class="col text-end">
-                                            <button onClick={() => { this.onRenewEntryButtonClick(lineModel) }} class="btn btn-info btn-sm">
+                                            <button onClick={() => {
+                                                this.onRenewEntryButtonClick(lineModel)
+                                            }}
+                                                    class="btn btn-info btn-sm me-2"
+                                            >
                                                 Renew
                                             </button>
                                             
@@ -299,4 +384,5 @@ export default defineComponent({
 })
 </script>
 
+<style src="bootstrap-icons/font/bootstrap-icons.css"/>
 <style src="bootstrap/dist/css/bootstrap.css"/>
